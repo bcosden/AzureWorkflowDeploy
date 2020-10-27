@@ -1,0 +1,446 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "Check_if_Approved_or_Rejected": {
+                "actions": {
+                    "Call_JobOutput_API": {
+                        "inputs": {
+                            "authentication": {
+                                "type": "ManagedServiceIdentity"
+                            },
+                            "method": "GET",
+                            "uri": "@variables('AutomationJobOutputURL')"
+                        },
+                        "runAfter": {
+                            "Call_Runbook_JobStatus_Until": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Http"
+                    },
+                    "Call_Runbook": {
+                        "inputs": {
+                            "body": {
+                                "ResourceGroup": "@body('Get_response_details')?['r8cadae7b29c24ae3a3a114e8de4cc619']",
+                                "Tags": "@body('Get_response_details')?['r26058e6c05e1411d903a78158d9b55c5']",
+                                "VMName": "@body('Get_response_details')?['r948d3fb2be204d62acc3174cb846152c']",
+                                "VMRegion": "@body('Get_response_details')?['rf3d0fe40e9604de18faf1646629d14d1']"
+                            },
+                            "headers": {
+                                "Content-Type": "application/json"
+                            },
+                            "method": "POST",
+                            "uri": "{WEB-HOOK URI TO AUTOMATION RUNBOOK}"
+                        },
+                        "runAfter": {},
+                        "type": "Http"
+                    },
+                    "Call_Runbook_JobStatus_Until": {
+                        "actions": {
+                            "Call_JobStatus_API": {
+                                "inputs": {
+                                    "authentication": {
+                                        "type": "ManagedServiceIdentity"
+                                    },
+                                    "method": "GET",
+                                    "uri": "@variables('AutomationJobURL')"
+                                },
+                                "runAfter": {},
+                                "type": "Http"
+                            },
+                            "Parse_JobStatus_JSON": {
+                                "inputs": {
+                                    "content": "@body('Call_JobStatus_API')",
+                                    "schema": {
+                                        "properties": {
+                                            "id": {
+                                                "type": "string"
+                                            },
+                                            "name": {
+                                                "type": "string"
+                                            },
+                                            "properties": {
+                                                "properties": {
+                                                    "creationTime": {
+                                                        "type": "string"
+                                                    },
+                                                    "exception": {},
+                                                    "jobId": {
+                                                        "type": "string"
+                                                    },
+                                                    "lastModifiedTime": {
+                                                        "type": "string"
+                                                    },
+                                                    "lastStatusModifiedTime": {
+                                                        "type": "string"
+                                                    },
+                                                    "parameters": {
+                                                        "properties": {
+                                                            "webhookData": {
+                                                                "type": "string"
+                                                            }
+                                                        },
+                                                        "type": "object"
+                                                    },
+                                                    "provisioningState": {
+                                                        "type": "string"
+                                                    },
+                                                    "runOn": {},
+                                                    "runbook": {
+                                                        "properties": {
+                                                            "name": {
+                                                                "type": "string"
+                                                            }
+                                                        },
+                                                        "type": "object"
+                                                    },
+                                                    "startedBy": {
+                                                        "type": "string"
+                                                    },
+                                                    "status": {
+                                                        "type": "string"
+                                                    },
+                                                    "statusDetails": {
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "type": "object"
+                                            },
+                                            "type": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "type": "object"
+                                    }
+                                },
+                                "runAfter": {
+                                    "Call_JobStatus_API": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "ParseJson"
+                            },
+                            "Set_JobStatus_Variable": {
+                                "inputs": {
+                                    "name": "JobStatus",
+                                    "value": "@body('Parse_JobStatus_JSON')?['properties']?['status']"
+                                },
+                                "runAfter": {
+                                    "Parse_JobStatus_JSON": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "SetVariable"
+                            },
+                            "Wait_Timer_Loop": {
+                                "actions": {
+                                    "Increment_variable": {
+                                        "inputs": {
+                                            "name": "Loop Counter",
+                                            "value": 1
+                                        },
+                                        "runAfter": {},
+                                        "type": "IncrementVariable"
+                                    }
+                                },
+                                "expression": "@greaterOrEquals(variables('Loop Counter'), 5000)",
+                                "limit": {
+                                    "count": 60,
+                                    "timeout": "PT1H"
+                                },
+                                "runAfter": {
+                                    "Set_JobStatus_Variable": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "Until"
+                            }
+                        },
+                        "expression": "@equals(variables('JobStatus'), 'Completed')",
+                        "limit": {
+                            "count": 60,
+                            "timeout": "PT1H"
+                        },
+                        "runAfter": {
+                            "For_each_JobID": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Until"
+                    },
+                    "For_each_JobID": {
+                        "actions": {
+                            "Set_AutomationJobOutputURL_Var": {
+                                "inputs": {
+                                    "name": "AutomationJobOutputURL",
+                                    "value": "https://management.azure.com/subscriptions/{Subscription-ID}/resourceGroups/{Resource-Group}/providers/Microsoft.Automation/automationAccounts/{Automation-Account-Name}/jobs/@{items('For_each_JobID')}/output?api-version=2017-05-15-preview"
+                                },
+                                "runAfter": {
+                                    "Set_AutomationJobURL_Var": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "SetVariable"
+                            },
+                            "Set_AutomationJobURL_Var": {
+                                "inputs": {
+                                    "name": "AutomationJobURL",
+                                    "value": "https://management.azure.com/subscriptions/{Subscription-ID}/resourceGroups/{Resource-Group}/providers/Microsoft.Automation/automationAccounts/{Automation-Account-Name}/jobs/@{items('For_each_JobID')}?api-version=2017-05-15-preview"
+                                },
+                                "runAfter": {},
+                                "type": "SetVariable"
+                            }
+                        },
+                        "foreach": "@body('Parse_Runbook_JSON')?['JobIds']",
+                        "runAfter": {
+                            "Parse_Runbook_JSON": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Foreach"
+                    },
+                    "Parse_Runbook_JSON": {
+                        "inputs": {
+                            "content": "@body('Call_Runbook')",
+                            "schema": {
+                                "properties": {
+                                    "JobIds": {
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        },
+                        "runAfter": {
+                            "Call_Runbook": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "ParseJson"
+                    },
+                    "Send_JobOutput_to_Requestor": {
+                        "inputs": {
+                            "body": {
+                                "Body": "<p>The Request has completed. Here are the results from the operation:<br>\n<br>\n@{body('Call_JobOutput_API')}</p>",
+                                "Subject": "Here is the status of your environment request",
+                                "To": "@body('Get_response_details')?['responder']"
+                            },
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['office365']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "path": "/v2/Mail"
+                        },
+                        "runAfter": {
+                            "Call_JobOutput_API": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "ApiConnection"
+                    }
+                },
+                "else": {
+                    "actions": {
+                        "Send_Denied_to_Requestor": {
+                            "inputs": {
+                                "body": {
+                                    "Body": "<p>Sorry but your request has been denied.<br>\n</p>",
+                                    "Subject": "Your Environment Request has been Denied",
+                                    "To": "@body('Get_response_details')?['responder']"
+                                },
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['office365']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "path": "/v2/Mail"
+                            },
+                            "runAfter": {},
+                            "type": "ApiConnection"
+                        }
+                    }
+                },
+                "expression": {
+                    "and": [
+                        {
+                            "equals": [
+                                "@body('Send_approval_email')?['SelectedOption']",
+                                "Approve"
+                            ]
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Init_Loop_Counter_Var": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "If"
+            },
+            "Get_response_details": {
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['microsoftforms']['connectionId']"
+                        }
+                    },
+                    "method": "get",
+                    "path": "/formapi/api/forms('@{encodeURIComponent('v4j5cvGGr0GRqy180BHbRyQjsH-CKCtBhNreW4QTNbZUNkpQOU9SS0U4N1NCTUIyNjdYSVZBRkVaRS4u')}')/responses",
+                    "queries": {
+                        "response_id": "@triggerBody()?['resourceData']?['responseId']"
+                    }
+                },
+                "runAfter": {},
+                "type": "ApiConnection"
+            },
+            "Init_AutomationJobOutputURL_Var": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "AutomationJobOutputURL",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Init_AutomationJobURL_Var": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Init_AutomationJobURL_Var": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "AutomationJobURL",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Init_JobStatus_Var": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Init_JobStatus_Var": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "JobStatus",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Send_approval_email": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Init_Loop_Counter_Var": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "Loop Counter",
+                            "type": "integer",
+                            "value": 0
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Init_AutomationJobOutputURL_Var": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Send_approval_email": {
+                "inputs": {
+                    "body": {
+                        "Message": {
+                            "Body": "Please approve this request:\nApplication Name: @{body('Get_response_details')?['rc02cb55a44aa4ca682ea11c9a3f837ae']}\nEmail: @{body('Get_response_details')?['responder']}\nCost Center: @{body('Get_response_details')?['r26058e6c05e1411d903a78158d9b55c5']}\nDeployment Region: @{body('Get_response_details')?['rf3d0fe40e9604de18faf1646629d14d1']}\nVM Resource Group: @{body('Get_response_details')?['r8cadae7b29c24ae3a3a114e8de4cc619']}\nVM Name: @{body('Get_response_details')?['r948d3fb2be204d62acc3174cb846152c']}\nBusiness Justification: @{body('Get_response_details')?['r8a6ec5454eeb48dc8bcf9cdd579cf428']}",
+                            "HideHTMLMessage": false,
+                            "Importance": "Normal",
+                            "Options": "Approve, Reject",
+                            "ShowHTMLConfirmationDialog": false,
+                            "Subject": "New Deployment Approval Request",
+                            "To": "brcosden@microsoft.com",
+                            "UseOnlyHTMLMessage": true
+                        },
+                        "NotificationUrl": "@{listCallbackUrl()}"
+                    },
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['office365']['connectionId']"
+                        }
+                    },
+                    "path": "/approvalmail/$subscriptions"
+                },
+                "runAfter": {
+                    "Get_response_details": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnectionWebhook"
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "parameters": {
+            "$connections": {
+                "defaultValue": {},
+                "type": "Object"
+            },
+            "SubscriptionID": {
+                "defaultValue": "",
+                "type": "SecureString"
+            }
+        },
+        "triggers": {
+            "When_a_new_response_is_submitted": {
+                "inputs": {
+                    "body": {
+                        "eventType": "responseAdded",
+                        "notificationUrl": "@{listCallbackUrl()}",
+                        "source": "ms-connector"
+                    },
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['microsoftforms']['connectionId']"
+                        }
+                    },
+                    "path": "/formapi/api/forms/@{encodeURIComponent('v4j5cvGGr0GRqy180BHbRyQjsH-CKCtBhNreW4QTNbZUNkpQOU9SS0U4N1NCTUIyNjdYSVZBRkVaRS4u')}/webhooks"
+                },
+                "splitOn": "@triggerBody()?['value']",
+                "type": "ApiConnectionWebhook"
+            }
+        }
+    },
+    "parameters": {
+        "$connections": {
+            "value": {
+                "microsoftforms": {
+                    "connectionId": "/subscriptions/{Subscription-ID}/resourceGroups/{Resource-Group}/providers/Microsoft.Web/connections/microsoftforms",
+                    "connectionName": "microsoftforms",
+                    "id": "/subscriptions/{Subscription-ID}/providers/Microsoft.Web/locations/eastus/managedApis/microsoftforms"
+                },
+                "office365": {
+                    "connectionId": "/subscriptions/{Subscription-ID}/resourceGroups/{Resource-Group}/providers/Microsoft.Web/connections/office365",
+                    "connectionName": "office365",
+                    "id": "/subscriptions/{Subscription-ID}/providers/Microsoft.Web/locations/eastus/managedApis/office365"
+                }
+            }
+        }
+    }
+}
